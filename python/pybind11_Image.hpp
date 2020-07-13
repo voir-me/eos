@@ -105,7 +105,7 @@ struct type_caster<eos::core::Image3u>
         // (2048, 4, 1) is default which results in transposed image
         // Below line works now. In numpy the strides are (2048, 4, 1) though. I think a copy gets created
         // nevertheless?
-        // std::vector<std::size_t> strides = { num_channels, num_channels * src.height(), 1 }; // might be
+        // std::vector<std::size_t> strides = { num_channels * src.width(), num_channels, 1 }; // might be
         // cols or rows...? I think rows?
         std::vector<std::size_t> strides = {num_channels * src.width(), num_channels,
                                             1}; // This seems to work with the row-major Image class. I just

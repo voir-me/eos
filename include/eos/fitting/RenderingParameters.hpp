@@ -133,7 +133,7 @@ public:
 
     // This assumes estimate_sop was run on points with OpenCV viewport! I.e. y flipped.
     RenderingParameters(ScaledOrthoProjectionParameters ortho_params, int screen_width, int screen_height)
-        : camera_type(CameraType::Orthographic), t_x(ortho_params.tx), t_y(ortho_params.ty),
+        : camera_type(CameraType::Orthographic), ortho_params(ortho_params), t_x(ortho_params.tx), t_y(ortho_params.ty),
           screen_width(screen_width), screen_height(screen_height)
     {
         rotation = glm::quat(ortho_params.R);
@@ -224,8 +224,11 @@ public:
 
     void set_screen_height(int screen_height) { this->screen_height = screen_height; };
 
+    const ScaledOrthoProjectionParameters &get_ortho_params() const { return ortho_params; }
+
 private:
     CameraType camera_type = CameraType::Orthographic;
+    ScaledOrthoProjectionParameters ortho_params;
     Frustum frustum; // Can construct a glm::ortho or glm::perspective matrix from this.
 
     glm::quat rotation;
@@ -299,6 +302,22 @@ inline Eigen::Matrix<float, 4, 4> to_eigen(const glm::mat4x4& glm_matrix)
         for (int c = 0; c < 4; ++c)
         {
             eigen_matrix(r, c) = glm_matrix[c][r]; // Not checked, but should be correct?
+        }
+    }
+    return eigen_matrix;
+};
+
+inline Eigen::Matrix<float, 3, 3> to_eigen3x3_as_is(const glm::mat3x3& glm_matrix)
+{
+    // glm stores its matrices in col-major order in memory, Eigen too.
+    // using MatrixXf4x4 = Eigen::Matrix<float, 4, 4>;
+    // Eigen::Map<MatrixXf4x4> eigen_map(&glm_matrix[0][0]); // doesn't work, why do we get a const*?
+    Eigen::Matrix<float, 3, 3> eigen_matrix;
+    for (int r = 0; r < 3; ++r)
+    {
+        for (int c = 0; c < 3; ++c)
+        {
+            eigen_matrix(r, c) = glm_matrix[r][c]; // Not checked, but should be correct?
         }
     }
     return eigen_matrix;

@@ -1,6 +1,6 @@
 {
     "edge_topology": {
-        "adjacent_faces": [
+        "adjacent_faces":   [
             {
                 "value0": 193,
                 "value1": 3681

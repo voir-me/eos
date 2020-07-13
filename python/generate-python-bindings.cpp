@@ -24,6 +24,7 @@
 #include "eos/core/read_obj.hpp"
 #include "eos/core/write_obj.hpp"
 #include "eos/core/Image.hpp"
+#include "eos/core/image/opencv_interop.hpp"
 #include "eos/fitting/RenderingParameters.hpp"
 #include "eos/fitting/contour_correspondence.hpp"
 #include "eos/fitting/fitting.hpp"
@@ -35,7 +36,7 @@
 #include "eos/morphablemodel/io/cvssp.hpp"
 #include "eos/pca/pca.hpp"
 #include "eos/render/texture_extraction.hpp"
-#include "eos/render/draw_utils.hpp"
+#include "eos/render/render.hpp"
 
 #include "pybind11/pybind11.h"
 #include "pybind11/eigen.h"
@@ -100,7 +101,7 @@ PYBIND11_MODULE(eos, eos_module)
 
     py::class_<core::Mesh>(core_module, "Mesh", "This class represents a 3D mesh consisting of vertices, vertex colour information and texture coordinates.")
         .def(py::init<>(), "Creates an empty mesh.")
-        .def_readwrite("vertices", &core::Mesh::vertices, "3D vertex positions")
+            .def_readwrite("vertices", &core::Mesh::vertices, "3D vertex positions")
         .def_readwrite("colors", &core::Mesh::colors, "Colour information for each vertex. Expected to be in RGB order.")
         .def_readwrite("texcoords", &core::Mesh::texcoords, "Texture coordinates")
         .def_readwrite("tvi", &core::Mesh::tvi, "Triangle vertex indices")
@@ -266,6 +267,35 @@ PYBIND11_MODULE(eos, eos_module)
 
     py::class_<fitting::RenderingParameters>(fitting_module, "RenderingParameters", "Represents a set of estimated model parameters (rotation, translation) and camera parameters (viewing frustum).")
         .def(py::init<fitting::ScaledOrthoProjectionParameters, int, int>(), "Create a RenderingParameters object from an instance of estimated ScaledOrthoProjectionParameters.")
+        .def("get_screen_width",
+            [](const fitting::RenderingParameters& p) {
+                return p.get_screen_width();
+            },
+            "Returns the screen width.")
+        .def("get_screen_height",
+            [](const fitting::RenderingParameters& p) {
+                return p.get_screen_height();
+            },
+            "Returns the screen height.")
+        .def(
+            "get_ortho_params_scale", [](const fitting::RenderingParameters& p) {
+                return p.get_ortho_params().s; },
+            "Returns ortho params scale.")
+        .def(
+            "get_ortho_params_t",
+            [](const fitting::RenderingParameters& p) {
+                return Eigen::Vector2f(p.get_ortho_params().tx, p.get_ortho_params().ty); },
+            "Returns ortho params tx ty.")
+        .def(
+            "get_ortho_params_r",
+            [](const fitting::RenderingParameters& p) {
+                Eigen::Matrix3f r;
+                for (int col = 0; col < 3; ++col)
+                    for (int row = 0; row < 3; ++row)
+                        r(row, col) = p.get_ortho_params().R[col][row];
+                return r;
+            },
+            "Returns ortho params R.")
         .def("get_rotation",
              [](const fitting::RenderingParameters& p) {
                  return Eigen::Vector4f(p.get_rotation().x, p.get_rotation().y, p.get_rotation().z, p.get_rotation().w);
@@ -336,6 +366,9 @@ PYBIND11_MODULE(eos, eos_module)
     /**
      * Bindings for the eos::render namespace:
      *  - extract_texture()
+     *  - draw_wireframe()
+     *  - render_affine()
+     *  - render()
      */
     py::module render_module = eos_module.def_submodule("render", "3D mesh and texture extraction functionality.");
 
@@ -379,4 +412,75 @@ PYBIND11_MODULE(eos, eos_module)
         "Draws the given mesh as wireframe into the image.", py::arg("image"), py::arg("mesh"),
         py::arg("modelview"), py::arg("projection"), py::arg("viewport"),
         py::arg("color") /* = (0, 255, 0)*/);
+
+    render_module.def(
+        "render_affine",
+        [](const core::Mesh& mesh, const fitting::RenderingParameters& rendering_params,
+            int image_width, int image_height) {
+            Eigen::Matrix<float, 3, 4> affine_from_ortho =
+                fitting::get_3x4_affine_camera_matrix(rendering_params, image_width, image_height);
+
+            std::cout << "Testing!" << std::endl;
+            core::Image4u result_image;
+            std::tie(result_image, std::ignore) =
+                render::render_affine(mesh, affine_from_ortho, image_width, image_height);
+            return result_image;
+        },
+        "Render mesh with estimated params, using projection into image",
+        py::arg("mesh"), py::arg("rendering_params"), py::arg("image_width"), py::arg("image_height"));
+
+    render_module.def(
+        "draw_wireframe",
+        [](eos::core::Image3u& image, const core::Mesh& mesh,
+           const fitting::RenderingParameters& rendering_params) {
+            cv::Mat cv_image = eos::core::to_mat(image);
+            render::draw_wireframe(cv_image, mesh, rendering_params.get_modelview(),
+                                   rendering_params.get_projection(),
+                                   fitting::get_opencv_viewport(rendering_params.get_screen_width(),
+                                                                rendering_params.get_screen_height()));
+            eos::core::Image3u result_image = eos::core::from_mat(cv_image);
+            return result_image;
+        },
+        "Draw wireframe of mesh on image", py::arg("image"), py::arg("mesh"), py::arg("rendering_params"));
+
+    render_module.def(
+        "render",
+        [](const core::Mesh& mesh, const fitting::RenderingParameters& rendering_params,
+           bool enable_backface_culling = false, bool enable_near_clipping = true,
+           bool enable_far_clipping = true) {
+
+                auto width = rendering_params.get_screen_width();
+                auto height = rendering_params.get_screen_height();
+
+//                glm::vec4 viewport(0, height, width, -height); // flips y, origin top-left, like in OpenCV
+//                // equivalent to what glm::project's viewport does, but we don't change z and w:
+//                glm::tmat4x4<float> viewport_mat(static_cast<float>(0));
+//                viewport_mat[0][0] = viewport[2] / 2.0f;
+//                viewport_mat[0][3] = viewport[2] / 2.0f + viewport[0];
+//                viewport_mat[1][1] = viewport[3] / 2.0f;
+//                viewport_mat[1][3] = viewport[3] / 2.0f + viewport[1];
+//                viewport_mat[2][2] = 1;
+//                viewport_mat[3][3] = 1;
+//
+//                // clang-format off
+//                //viewport_mat << viewport[2] / 2.0f, 0.0f, 0.0f, viewport[2] / 2.0f + viewport[0],
+//                //0.0f,               viewport[3] / 2.0f, 0.0f, viewport[3] / 2.0f + viewport[1],
+//                //0.0f,               0.0f,               1.0f, 0.0f,
+//                //0.0f,               0.0f,               0.0f, 1.0f;
+//                // clang-format on
+//
+//                glm::tmat4x4<float> full_projection_4x4 = viewport_mat * rendering_params.get_projection();
+
+                std::pair<core::Image4u, core::Image1d> result =
+                    render::render(mesh,
+                               rendering_params.get_modelview(), rendering_params.get_projection(),
+                               width, height,
+                               cpp17::nullopt,
+                               enable_backface_culling, enable_near_clipping, enable_far_clipping);
+                return result.first;
+        },
+        "Rendering mesh with estimated rendering params.",
+        py::arg("mesh"), py::arg("rendering_params"),
+        py::arg("enable_backface_culling") = false, py::arg("enable_near_clipping") = false,
+        py::arg("enable_far_clipping") = false);
 };
