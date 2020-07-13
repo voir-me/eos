@@ -277,6 +277,25 @@ PYBIND11_MODULE(eos, eos_module)
                 return p.get_screen_height();
             },
             "Returns the screen height.")
+        .def(
+            "get_ortho_params_scale", [](const fitting::RenderingParameters& p) {
+                return p.get_ortho_params().s; },
+            "Returns ortho params scale.")
+        .def(
+            "get_ortho_params_t",
+            [](const fitting::RenderingParameters& p) {
+                return Eigen::Vector2f(p.get_ortho_params().tx, p.get_ortho_params().ty); },
+            "Returns ortho params tx ty.")
+        .def(
+            "get_ortho_params_r",
+            [](const fitting::RenderingParameters& p) {
+                Eigen::Matrix3f r;
+                for (int col = 0; col < 3; ++col)
+                    for (int row = 0; row < 3; ++row)
+                        r(row, col) = p.get_ortho_params().R[col][row];
+                return r;
+            },
+            "Returns ortho params R.")
         .def("get_rotation",
              [](const fitting::RenderingParameters& p) {
                  return Eigen::Vector4f(p.get_rotation().x, p.get_rotation().y, p.get_rotation().z, p.get_rotation().w);
