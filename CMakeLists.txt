@@ -49,6 +49,10 @@ find_package(Eigen3 REQUIRED)
 message(STATUS "Eigen3 found: ${EIGEN3_FOUND}, version: ${EIGEN3_VERSION}")
 message(STATUS "Eigen3 include dir found at ${EIGEN3_INCLUDE_DIR}")
 
+find_package(OpenCV REQUIRED)
+INCLUDE_DIRECTORIES( ${OpenCV_INCLUDE_DIRS} )
+link_libraries( ${OpenCV_LIBS} )
+
 # Set the include directories of the 3rd-party submodules that we use:
 set(CEREAL_INCLUDE_DIR "${eos_3RDPARTY_DIR}/cereal/include")
 set(glm_INCLUDE_DIR "${eos_3RDPARTY_DIR}/glm")
