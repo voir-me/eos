@@ -37,6 +37,7 @@
 #include "eos/pca/pca.hpp"
 #include "eos/render/texture_extraction.hpp"
 #include "eos/render/render.hpp"
+#include "eos/render/draw_utils.hpp"
 
 #include "pybind11/pybind11.h"
 #include "pybind11/eigen.h"
